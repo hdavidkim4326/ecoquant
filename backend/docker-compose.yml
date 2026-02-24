@@ -1,0 +1,135 @@
+# =============================================================================
+# EcoQuant - Docker Compose Configuration
+# Production-Grade Quant Investment Platform Infrastructure
+# =============================================================================
+
+version: '3.9'
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecoquant_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ecoquant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecoquant_secret_2024}
+      POSTGRES_DB: ${POSTGRES_DB:-ecoquant_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecoquant} -d ${POSTGRES_DB:-ecoquant_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecoquant_network
+
+  # ---------------------------------------------------------------------------
+  # Redis (Caching + Celery Broker)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: ecoquant_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecoquant_network
+
+  # ---------------------------------------------------------------------------
+  # Celery Worker (Backtest Processing)
+  # ---------------------------------------------------------------------------
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecoquant_celery_worker
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ecoquant}:${POSTGRES_PASSWORD:-ecoquant_secret_2024}@postgres:5432/${POSTGRES_DB:-ecoquant_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro
+    networks:
+      - ecoquant_network
+
+  # ---------------------------------------------------------------------------
+  # Celery Beat (Scheduled Tasks - Live Tracking)
+  # ---------------------------------------------------------------------------
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecoquant_celery_beat
+    command: celery -A app.worker beat --loglevel=info
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - ecoquant_network
+
+  # ---------------------------------------------------------------------------
+  # Flower (Celery Monitoring Dashboard)
+  # ---------------------------------------------------------------------------
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecoquant_flower
+    command: celery -A app.worker flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - ecoquant_network
+
+# -----------------------------------------------------------------------------
+# Volumes (Persistent Data Storage)
+# -----------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+    name: ecoquant_postgres_data
+  redis_data:
+    driver: local
+    name: ecoquant_redis_data
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  ecoquant_network:
+    driver: bridge
+    name: ecoquant_network
+

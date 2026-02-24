@@ -1,0 +1,68 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+dist/
+eggs/
+.eggs/
+parts/
+sdist/
+wheels/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / type-check / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
+.cache/
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/
+
+# Logs / runtime artifacts
+*.log
+*.out
+*.err
+*.pid
+logs/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+!env.example
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local binary dependencies
+TA_Lib-*.whl
+ta-lib-*.tar.gz
